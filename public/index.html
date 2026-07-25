@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Заметки</title>
+    <meta name="description" content="Приватные заметки для двоих" />
+    <meta name="theme-color" content="#05070d" />
+
+    <!-- PWA / iOS -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Заметки" />
+    <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+
+    <!-- Шрифты: Onest (дисплей+текст) и IBM Plex Mono (метки) - обе с кириллицей.
+         Onest выбран вместо Space Grotesk, у которого нет кириллицы. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="bg" aria-hidden="true">
+      <div class="bg-mesh"></div>
+      <div class="blob blob-1"></div>
+      <div class="blob blob-2"></div>
+      <div class="blob blob-3"></div>
+      <div class="bg-vignette"></div>
+      <div class="bg-grain"></div>
+    </div>
+    <div class="cursor-glow" id="cursorGlow" aria-hidden="true"></div>
+
+    <main id="app" class="app"></main>
+    <div id="toasts" class="toasts" aria-live="polite" aria-atomic="false"></div>
+
+    <noscript>
+      <div style="padding: 2rem; color: #cde; font-family: sans-serif">
+        Для работы приложения нужно включить JavaScript.
+      </div>
+    </noscript>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
