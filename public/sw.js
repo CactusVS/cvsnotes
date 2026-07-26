@@ -1,5 +1,5 @@
 // Заметки - service worker (офлайн-оболочка)
-const CACHE = "mn-v4";
+const CACHE = "mn-v5";
 const CORE = [
   "/",
   "/index.html",
@@ -77,6 +77,8 @@ self.addEventListener("push", (e) => {
       body: data.body || "",
       tag: data.tag || "mn",
       renotify: true,
+      vibrate: [70, 50, 70],
+      silent: false,
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
       data: { url: data.url || "/" },

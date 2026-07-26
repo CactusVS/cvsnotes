@@ -22,7 +22,7 @@ import {
   summary,
   buildStats,
 } from "../../lib/games/index.mjs";
-import { touch, getStreak } from "../../lib/activity.mjs";
+import { light, getStreak } from "../../lib/activity.mjs";
 import * as push from "../../lib/push.mjs";
 
 export const config = { path: "/api/*" };
@@ -203,7 +203,6 @@ async function updateNote(request, userId, id) {
       titleTo: titleChanged ? newTitle : "",
     };
     revs = await store.appendRevision(id, rev);
-    await touch();
     // уведомляем второго, но не заваливаем: только если правка заметная
     if (ins.length > 1 || titleChanged) {
       const label = newTitle.trim() || preview(newContent, 40) || "Без названия";
@@ -308,7 +307,6 @@ async function moveHandler(request, id, userId) {
   }
   game.updated_at = Date.now();
   await store.putGame(game);
-  await touch();
 
   const entry = catalogEntry(game.type);
   const gameName = entry ? entry.title : "игра";
@@ -362,8 +360,28 @@ export default async function handler(request) {
 
     // огонёк и пуши
     if (path === "/api/streak" && method === "GET") return json(await getStreak());
+    if (path === "/api/streak/light" && method === "POST") {
+      const res = await light(userId);
+      // если зажёг только один, зовём второго
+      if (!res.both) {
+        push
+          .send(otherUser(userId), {
+            title: "Огонёк ждёт",
+            body: USERS[userId].name + " зажёг(ла) огонёк. Твоя очередь",
+            tag: "flame",
+            url: "/",
+          })
+          .catch(() => {});
+      }
+      return json(await getStreak());
+    }
     if (path === "/api/push/key" && method === "GET")
-      return json({ key: push.publicKey(), enabled: await push.hasSubscription(userId) });
+      return json({
+        key: push.publicKey(),
+        enabled: await push.hasSubscription(userId),
+        // чтобы было видно, какой именно переменной не хватает на сервере
+        missing: push.missingKeys(),
+      });
     if (path === "/api/push/subscribe" && method === "POST") {
       const body = await readBody(request);
       if (!body.subscription || !body.subscription.endpoint)

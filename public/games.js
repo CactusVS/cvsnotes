@@ -1,5 +1,6 @@
 // Игры: панель со списком, экраны игр и статистика.
 import { I, state, h, icon, api, nameOf, nameGen, WON, plural, ago, toast } from "./core.js";
+import { buzz } from "./extras.js";
 
 let panel = null; // оверлей
 let mode = "list"; // list | game | stats
@@ -111,6 +112,8 @@ export function startGamesBadge() {
   badgeTimer = setInterval(refreshBadge, 15000);
 }
 
+let wasWaiting = false;
+
 async function refreshBadge() {
   const btn = document.getElementById("gamesBtn");
   if (!btn || !state.me) return;
@@ -118,6 +121,9 @@ async function refreshBadge() {
     const data = await api("/api/games");
     const waiting = (data.games || []).some((g) => g.status === "active" && g.yourTurn);
     btn.classList.toggle("has-badge", waiting);
+    // ход перешёл к нам, пока приложение открыто - тихо звякнем
+    if (waiting && !wasWaiting) buzz();
+    wasWaiting = waiting;
   } catch {}
 }
 
@@ -1333,15 +1339,63 @@ async function onChessTap(i, v, moves) {
     return;
   }
   if (csSel === null) return;
-  const mv = moves.find((m) => m.from === csSel && m.to === i);
-  if (!mv) {
+  const cands = moves.filter((m) => m.from === csSel && m.to === i);
+  if (!cands.length) {
     csSel = null;
     renderGame();
     return;
   }
   const from = csSel;
   csSel = null;
-  await doMove({ kind: "move", from, to: i, promo: mv.promo || undefined });
+  // на одну клетку может вести несколько ходов - это превращение пешки
+  if (cands.length > 1 && cands.every((m) => m.promo)) {
+    choosePromo(v.myColor, (promo) => doMove({ kind: "move", from, to: i, promo }));
+    return;
+  }
+  await doMove({ kind: "move", from, to: i, promo: cands[0].promo || undefined });
+}
+
+const PROMO_LIST = [
+  { id: "q", name: "Ферзь" },
+  { id: "r", name: "Ладья" },
+  { id: "b", name: "Слон" },
+  { id: "n", name: "Конь" },
+];
+
+function choosePromo(color, onPick) {
+  const scrim = h(
+    "div",
+    { class: "modal-scrim" },
+    h(
+      "div",
+      { class: "modal glass" },
+      h("h3", {}, "Во что превращаем?"),
+      h("p", {}, "Пешка дошла до конца доски."),
+      h(
+        "div",
+        { class: "promo-row" },
+        ...PROMO_LIST.map((it) =>
+          h(
+            "button",
+            {
+              class: "promo-opt",
+              onclick: () => {
+                scrim.remove();
+                onPick(it.id);
+              },
+            },
+            h(
+              "span",
+              { class: "promo-glyph " + color },
+              CHESS_GLYPH[color === "w" ? it.id.toUpperCase() : it.id]
+            ),
+            h("span", { class: "promo-name" }, it.name)
+          )
+        )
+      )
+    )
+  );
+  document.body.appendChild(scrim);
 }
 
 // ============================================================

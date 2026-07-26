@@ -1,35 +1,162 @@
-// Огонёк (стрик) и пуш-уведомления.
-import { I, h, api, state, toast, plural } from "./core.js";
+// Огонёк, пуш-уведомления, звук с вибрацией и чек-листы.
+import { I, h, api, state, toast, plural, nameOf } from "./core.js";
 
-// ---------- огонёк ----------
-export async function refreshStreak() {
-  const el = document.getElementById("streakChip");
-  if (!el) return;
+// ============================================================
+//  ЗВУК И ВИБРАЦИЯ
+// ============================================================
+const SOUND_KEY = "mn_sound";
+let audioCtx = null;
+
+export function soundOn() {
+  return localStorage.getItem(SOUND_KEY) !== "0";
+}
+export function setSound(on) {
+  localStorage.setItem(SOUND_KEY, on ? "1" : "0");
+}
+
+// Короткий сигнал плюс вибрация. Работает только после первого касания страницы.
+export function buzz(kind = "ping") {
+  if (!soundOn()) return;
   try {
-    const s = await api("/api/streak");
-    if (!s.streak) {
-      el.style.display = "none";
-      return;
+    if (navigator.vibrate) {
+      navigator.vibrate(kind === "win" ? [60, 40, 60, 40, 140] : [70, 50, 70]);
     }
-    el.style.display = "";
-    el.classList.toggle("cold", !s.today);
-    el.title = s.today
-      ? "Вы что-то делали " + s.streak + " " + plural(s.streak, ["день", "дня", "дней"]) + " подряд"
-      : "Серия " + s.streak + ". Сегодня ещё ничего не было";
-    el.querySelector(".streak-n").textContent = String(s.streak);
+  } catch {}
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    const t = audioCtx.currentTime;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = "sine";
+    o.frequency.setValueAtTime(kind === "win" ? 523 : 660, t);
+    o.frequency.setValueAtTime(kind === "win" ? 784 : 880, t + 0.09);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+    o.connect(g);
+    g.connect(audioCtx.destination);
+    o.start(t);
+    o.stop(t + 0.35);
   } catch {}
 }
 
+// ============================================================
+//  ОГОНЁК
+// ============================================================
+let lastStreak = null;
+
 export function streakChip() {
   return h(
-    "span",
-    { class: "streak-chip", id: "streakChip", style: "display:none" },
+    "button",
+    {
+      class: "streak-chip cold",
+      id: "streakChip",
+      title: "Огонёк",
+      "aria-label": "Огонёк",
+      onclick: () => openFlame(),
+    },
     h("span", { class: "streak-ic", html: I.flame }),
     h("span", { class: "streak-n" }, "0")
   );
 }
 
-// ---------- пуш-уведомления ----------
+export async function refreshStreak() {
+  const el = document.getElementById("streakChip");
+  if (!el) return;
+  try {
+    const s = await api("/api/streak");
+    lastStreak = s;
+    el.classList.toggle("cold", !s.burning);
+    el.querySelector(".streak-n").textContent = String(s.streak);
+    el.title = s.burning
+      ? "Горит " + s.streak + " " + plural(s.streak, ["день", "дня", "дней"])
+      : "Огонёк не зажжён сегодня";
+  } catch {}
+}
+
+function personRow(id, done) {
+  return h(
+    "div",
+    { class: "flame-row" + (done ? " done" : "") },
+    h("span", { class: "who-dot " + id }),
+    h("span", { class: "flame-name" }, nameOf(id)),
+    h("span", { class: "flame-mark", html: done ? I.check : "" }, done ? "" : "ещё нет")
+  );
+}
+
+export async function openFlame() {
+  let s = lastStreak;
+  try {
+    s = await api("/api/streak");
+    lastStreak = s;
+  } catch {
+    if (!s) return;
+  }
+  const me = state.me.user;
+  const iDid = !!s.today[me];
+
+  const scrim = h("div", { class: "modal-scrim", onclick: (e) => e.target === scrim && scrim.remove() });
+  const body = h("div", { class: "modal glass flame-modal" });
+
+  const render = () => {
+    const lit = !!s.today[me];
+    body.replaceChildren(
+      h("div", { class: "flame-big" + (s.burning ? " on" : ""), html: I.flame }),
+      h(
+        "h3",
+        {},
+        s.burning
+          ? "Горит " + s.streak + " " + plural(s.streak, ["день", "дня", "дней"])
+          : s.streak
+          ? "Серия " + s.streak + " " + plural(s.streak, ["день", "дня", "дней"])
+          : "Огонёк не горит"
+      ),
+      h(
+        "p",
+        {},
+        s.burning
+          ? "Сегодня оба на месте. Завтра не забудьте."
+          : "Огонёк загорается, когда оба зажгли его за день."
+      ),
+      h("div", { class: "flame-people" }, personRow("angelina", !!s.today.angelina), personRow("kirill", !!s.today.kirill)),
+      h(
+        "div",
+        { class: "modal-actions" },
+        h("button", { class: "btn", onclick: () => scrim.remove() }, "Закрыть"),
+        lit
+          ? h("button", { class: "btn", disabled: true }, "Ты уже зажёг")
+          : h(
+              "button",
+              {
+                class: "btn btn-primary",
+                onclick: async (e) => {
+                  e.currentTarget.disabled = true;
+                  try {
+                    s = await api("/api/streak/light", "POST");
+                    lastStreak = s;
+                    buzz(s.burning ? "win" : "ping");
+                    toast(s.burning ? "Огонёк горит!" : "Ждём второго", "ok");
+                    render();
+                    refreshStreak();
+                  } catch {
+                    toast("Не получилось", "err");
+                  }
+                },
+              },
+              "Поджечь"
+            )
+      )
+    );
+  };
+  render();
+  scrim.appendChild(body);
+  document.body.appendChild(scrim);
+}
+
+// ============================================================
+//  ПУШ-УВЕДОМЛЕНИЯ
+// ============================================================
 function urlB64ToUint8(base64) {
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
   const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -56,23 +183,26 @@ export async function pushState() {
 
 export async function enablePush() {
   if (!pushSupported()) {
-    toast("Браузер не умеет уведомления", "err");
+    toast("Браузер не умеет уведомления. На iPhone сначала добавь сайт на экран «Домой»", "err");
+    return false;
+  }
+  if (!window.isSecureContext) {
+    toast("Уведомления работают только по https", "err");
     return false;
   }
   const perm = await Notification.requestPermission();
   if (perm !== "granted") {
     toast(
-      perm === "denied"
-        ? "Уведомления запрещены в настройках браузера"
-        : "Разрешение не получено",
+      perm === "denied" ? "Уведомления запрещены в настройках браузера" : "Разрешение не получено",
       "err"
     );
     return false;
   }
   try {
-    const { key } = await api("/api/push/key");
-    if (!key) {
-      toast("На сервере не настроены ключи уведомлений", "err");
+    const info = await api("/api/push/key");
+    if (!info.key) {
+      const miss = (info.missing || []).join(" и ");
+      toast(miss ? "На сервере не задано: " + miss : "На сервере нет ключей уведомлений", "err");
       return false;
     }
     const reg = await navigator.serviceWorker.ready;
@@ -80,10 +210,11 @@ export async function enablePush() {
     if (!sub) {
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlB64ToUint8(key),
+        applicationServerKey: urlB64ToUint8(info.key),
       });
     }
     await api("/api/push/subscribe", "POST", { subscription: sub.toJSON() });
+    buzz();
     toast("Уведомления включены", "ok");
     return true;
   } catch (e) {
@@ -107,46 +238,85 @@ export async function disablePush() {
   }
 }
 
-// Кнопка-колокольчик для шапки
+// Колокольчик открывает маленькое меню с двумя переключателями
 export function bellButton() {
-  const btn = h("button", {
+  return h("button", {
     class: "btn icon-btn",
     id: "bellBtn",
     title: "Уведомления",
     "aria-label": "Уведомления",
     html: I.bell,
-    onclick: async () => {
-      const st = await pushState();
-      if (st.on) {
-        await disablePush();
-      } else {
-        await enablePush();
-      }
-      syncBell();
-    },
+    onclick: (e) => openBell(e.currentTarget),
   });
-  return btn;
+}
+
+async function openBell(anchor) {
+  const old = document.querySelector(".bell-pop");
+  if (old) {
+    old.remove();
+    return;
+  }
+  const st = await pushState();
+  const pop = h("div", { class: "popover bell-pop" });
+
+  const row = (label, sub, on, onToggle) =>
+    h(
+      "button",
+      {
+        class: "bell-row" + (on ? " on" : ""),
+        onclick: async (e) => {
+          e.currentTarget.disabled = true;
+          await onToggle();
+          pop.remove();
+          syncBell();
+        },
+      },
+      h("span", { class: "bell-txt" }, h("b", {}, label), h("span", {}, sub)),
+      h("span", { class: "bell-sw" + (on ? " on" : "") })
+    );
+
+  pop.appendChild(
+    st.supported
+      ? row(
+          "Уведомления",
+          st.on ? "приходят на телефон" : "сообщать о ходе и заметках",
+          st.on,
+          () => (st.on ? disablePush() : enablePush())
+        )
+      : h("div", { class: "bell-note" }, "Браузер не умеет уведомления")
+  );
+  pop.appendChild(
+    row("Звук и вибрация", soundOn() ? "включены" : "выключены", soundOn(), async () => {
+      setSound(!soundOn());
+      if (soundOn()) buzz();
+    })
+  );
+
+  document.body.appendChild(pop);
+  const r = anchor.getBoundingClientRect();
+  pop.style.top = r.bottom + 8 + "px";
+  pop.style.right = Math.max(12, window.innerWidth - r.right) + "px";
+  const close = (e) => {
+    if (!pop.contains(e.target) && e.target !== anchor) {
+      pop.remove();
+      document.removeEventListener("pointerdown", close);
+    }
+  };
+  setTimeout(() => document.addEventListener("pointerdown", close), 0);
 }
 
 export async function syncBell() {
   const btn = document.getElementById("bellBtn");
   if (!btn) return;
   const st = await pushState();
-  if (!st.supported) {
-    btn.style.display = "none";
-    return;
-  }
-  btn.style.display = "";
   btn.classList.toggle("on", !!st.on);
-  btn.title = st.on ? "Уведомления включены" : "Включить уведомления";
+  btn.title = st.on ? "Уведомления включены" : "Уведомления";
 }
 
-// ---------- чек-листы ----------
+// ============================================================
+//  ЧЕК-ЛИСТЫ
+// ============================================================
 const ITEM_RE = /^-\s\[([ xX])\]\s?(.*)$/;
-
-export function isChecklistLine(line) {
-  return ITEM_RE.test(line);
-}
 
 export function parseChecklist(text) {
   const lines = String(text || "").split("\n");
@@ -164,14 +334,12 @@ export function stringifyChecklist(items) {
   return items.map((it) => `- [${it.done ? "x" : " "}] ${it.text}`).join("\n");
 }
 
-// Текст заметки -> формат чек-листа (при включении режима)
 export function toChecklist(text) {
   const lines = String(text || "").split("\n").filter((l) => l.trim());
   if (!lines.length) return "- [ ] ";
   return lines.map((l) => (ITEM_RE.test(l) ? l : `- [ ] ${l.trim()}`)).join("\n");
 }
 
-// Обратно в обычный текст
 export function fromChecklist(text) {
   return String(text || "")
     .split("\n")
@@ -182,12 +350,11 @@ export function fromChecklist(text) {
     .join("\n");
 }
 
-// Красивое превью чек-листа в карточке.
-// Меняем разметку где угодно в строке: в превью с сервера переносы уже схлопнуты в пробелы.
+// Меняем разметку где угодно в строке: в превью с сервера переносы схлопнуты в пробелы
 export function checklistPreview(text) {
   return String(text || "")
     .replace(/-\s\[[xX]\]\s?/g, "✓ ")
     .replace(/-\s\[\s?\]\s?/g, "○ ")
-    .replace(/[✓○]\s*$/, "") // пустой последний пункт не показываем
+    .replace(/[✓○]\s*$/, "")
     .trim();
 }
