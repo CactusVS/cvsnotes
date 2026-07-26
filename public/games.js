@@ -1,6 +1,14 @@
 // Игры: панель со списком, экраны игр и статистика.
 import { I, state, h, icon, api, nameOf, nameGen, WON, plural, ago, toast } from "./core.js";
 import { buzz } from "./extras.js";
+import {
+  dominoBoard,
+  durakBoard,
+  unoBoard,
+  crosswordBoard,
+  setRerender,
+  resetBoards,
+} from "./games2.js";
 
 let panel = null; // оверлей
 let mode = "list"; // list | game | stats
@@ -25,6 +33,10 @@ const TYPE_ICON = {
   codenames: "grid",
   hangman: "noose",
   wordle: "letters",
+  domino: "domino",
+  durak: "cards",
+  uno: "uno",
+  crossword: "crossword",
 };
 
 // Unicode-фигуры: рисуются шрифтом, никаких картинок не нужно
@@ -34,6 +46,9 @@ const CHESS_GLYPH = {
 };
 
 const ALPHABET = "АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ".split("");
+
+// экраны из games2.js перерисовываются тем же renderGame
+setRerender(() => renderGame());
 
 // ============================================================
 //  ОТКРЫТИЕ / ЗАКРЫТИЕ
@@ -244,6 +259,7 @@ async function renderList(showLoading) {
 function turnLabel(g) {
   if (g.status !== "active") return null;
   if (g.type === "battleship" && g.phase === "placing") return "расстановка";
+  if (g.coop && !g.turn) return "вместе";
   if (!g.turn) return "ждём";
   return g.yourTurn ? "твой ход" : "ход " + nameGen(g.turn);
 }
@@ -404,6 +420,7 @@ async function openGame(id) {
     bsPicks = [];
     chSel = null;
     csSel = null;
+    resetBoards();
     renderGame();
   } catch (e) {
     if (e.status === 404) {
@@ -492,6 +509,10 @@ function renderGame() {
   else if (g.type === "checkers") scroll.appendChild(checkersBoard(g));
   else if (g.type === "chess") scroll.appendChild(chessBoard(g));
   else if (g.type === "hangman") scroll.appendChild(hangmanBoard(g));
+  else if (g.type === "domino") scroll.appendChild(dominoBoard(g, doMove));
+  else if (g.type === "durak") scroll.appendChild(durakBoard(g, doMove));
+  else if (g.type === "uno") scroll.appendChild(unoBoard(g, doMove));
+  else if (g.type === "crossword") scroll.appendChild(crosswordBoard(g, doMove));
 
   box.replaceChildren(
     head(g.title, {
@@ -528,7 +549,10 @@ function statusBar(g) {
   if (g.status !== "active") {
     if (g.coop) {
       if (g.winner === "both") {
-        text = "Прошли вместе! Найдено " + v.found + " из " + v.total;
+        text =
+          g.type === "crossword"
+            ? "Разгадали! Слов: " + v.total + ", подсказок: " + v.hints
+            : "Прошли вместе! Найдено " + v.found + " из " + v.total;
         tone = "win";
       } else {
         text =
@@ -552,6 +576,10 @@ function statusBar(g) {
   } else if (g.type === "battleship" && v.phase === "placing") {
     text = v.ready[state.me.user] ? "Ждём соперника" : "Расставь корабли";
     tone = v.ready[state.me.user] ? "wait" : "you";
+  } else if (g.coop && !g.turn) {
+    // кроссворд без очереди: пишут оба когда угодно
+    text = "Осталось слов: " + (v.total - v.found);
+    tone = "you";
   } else if (g.yourTurn) {
     text = "Твой ход";
     tone = "you";
@@ -1598,7 +1626,9 @@ function renderStats(data) {
 
 function statRow(row) {
   const bits = [];
-  if (row.coop) {
+  if (row.type === "crossword") {
+    bits.push(h("span", { class: "st-chip win" }, "разгадано: " + row.coopWon));
+  } else if (row.coop) {
     bits.push(h("span", { class: "st-chip win" }, "побед: " + row.coopWon));
     bits.push(h("span", { class: "st-chip" }, "поражений: " + row.coopLost));
     if (row.bestFound) bits.push(h("span", { class: "st-chip" }, "рекорд: " + row.bestFound + " агентов"));
@@ -1622,7 +1652,20 @@ function statRow(row) {
     ),
     h("div", { class: "st-chips" }, ...bits),
     row.extra && row.extra.kind === "wordle" ? wordleStats(row.extra) : null,
-    row.extra && row.extra.kind === "codenames" ? codenamesStats(row.extra) : null
+    row.extra && row.extra.kind === "codenames" ? codenamesStats(row.extra) : null,
+    row.extra && row.extra.kind === "crossword" ? crosswordStats(row.extra) : null
+  );
+}
+
+function crosswordStats(e) {
+  const avg = e.solved ? Math.round((e.words / e.solved) * 10) / 10 : 0;
+  return h(
+    "div",
+    { class: "st-wordle-nums" },
+    h("div", { class: "st-num" }, h("b", {}, String(e.words)), h("span", {}, "слов вписано")),
+    h("div", { class: "st-num" }, h("b", {}, String(avg)), h("span", {}, "слов за сетку")),
+    h("div", { class: "st-num" }, h("b", {}, String(e.hints)), h("span", {}, "подсказок взято")),
+    e.clean ? h("div", { class: "st-num" }, h("b", {}, String(e.clean)), h("span", {}, "сеток без подсказок")) : null
   );
 }
 

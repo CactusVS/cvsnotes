@@ -54,6 +54,13 @@ export const I = {
   check2:
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/></svg>',
   bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 5-2 6-2 6h16s-2-1-2-6Z"/><path d="M10.3 20a2 2 0 0 0 3.4 0"/></svg>',
+  domino:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M6 12h12"/><circle cx="12" cy="7" r="1.1" fill="currentColor" stroke="none"/><circle cx="9.5" cy="15" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="18.5" r="1.1" fill="currentColor" stroke="none"/></svg>',
+  cards:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="6" width="11" height="15" rx="2" transform="rotate(-9 8.5 13.5)"/><rect x="11" y="4" width="11" height="15" rx="2" transform="rotate(9 16.5 11.5)"/><path d="M16.5 9.5c-1.6 1.4-2.4 2.2-2.4 3a1.4 1.4 0 0 0 2.4.9 1.4 1.4 0 0 0 2.4-.9c0-.8-.8-1.6-2.4-3Z" fill="currentColor" stroke="none"/></svg>',
+  uno: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="2.5" width="16" height="19" rx="3"/><ellipse cx="12" cy="12" rx="5" ry="7.5" transform="rotate(20 12 12)"/><path d="M10.6 9.5v4a1.4 1.4 0 0 0 2.8 0v-4" stroke-linecap="round"/></svg>',
+  crossword:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/><rect x="9" y="9" width="6" height="6" fill="currentColor" stroke="none" opacity=".35"/></svg>',
 };
 
 export const NAMES = { angelina: "Ангелина", kirill: "Кирилл" };

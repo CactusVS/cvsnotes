@@ -1,5 +1,5 @@
 // Заметки - service worker (офлайн-оболочка)
-const CACHE = "mn-v5";
+const CACHE = "mn-v6";
 const CORE = [
   "/",
   "/index.html",
@@ -7,6 +7,7 @@ const CORE = [
   "/app.js",
   "/core.js",
   "/games.js",
+  "/games2.js",
   "/extras.js",
   "/manifest.webmanifest",
   "/icons/icon.svg",
