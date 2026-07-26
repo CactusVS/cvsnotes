@@ -45,6 +45,15 @@ export const I = {
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 19.5c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5"/><path d="M16.5 5.2a3.2 3.2 0 0 1 0 5.9M18 14.3c2 .7 3.5 2.3 3.5 4.6"/></svg>',
   play: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5.5v13l11-6.5Z"/></svg>',
   book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19v15H5.5A1.5 1.5 0 0 0 4 19.5v-15Z"/><path d="M4 19.5A1.5 1.5 0 0 1 5.5 21H19"/></svg>',
+  crown:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 6.5 11 12 4l5.5 7L21 7.5V17a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7.5Z"/><path d="M3 20.5h18"/></svg>',
+  noose:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V3h11"/><path d="M15 3v4"/><circle cx="15" cy="10.5" r="3.5"/></svg>',
+  flame:
+    '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2c.5 3-1.6 4.3-3 5.8A6.9 6.9 0 0 0 7 12a5 5 0 0 0 10 0c0-1.6-.7-2.8-1.6-3.9-.6.7-1.3 1.1-2 1.1 1.2-2.6.3-5.4-1.4-7.2Z" opacity=".9"/></svg>',
+  check2:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/></svg>',
+  bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 5-2 6-2 6h16s-2-1-2-6Z"/><path d="M10.3 20a2 2 0 0 0 3.4 0"/></svg>',
 };
 
 export const NAMES = { angelina: "Ангелина", kirill: "Кирилл" };

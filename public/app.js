@@ -14,6 +14,17 @@ import {
   toast,
 } from "./core.js";
 import { openGames, startGamesBadge } from "./games.js";
+import {
+  streakChip,
+  refreshStreak,
+  bellButton,
+  syncBell,
+  parseChecklist,
+  stringifyChecklist,
+  toChecklist,
+  fromChecklist,
+  checklistPreview,
+} from "./extras.js";
 
 const app = document.getElementById("app");
 
@@ -165,6 +176,8 @@ function enterApp() {
         h("span", { class: "who-mini" }, "  ·  " + nameOf(state.me.user))
       )
     ),
+    streakChip(),
+    bellButton(),
     h("button", {
       class: "btn icon-btn",
       id: "gamesBtn",
@@ -310,7 +323,7 @@ function card(n) {
   );
   const bodyEl = n.empty
     ? h("div", { class: "card-body card-empty" }, "Пустая заметка")
-    : h("div", { class: "card-body" }, n.preview);
+    : h("div", { class: "card-body" }, n.checklist ? checklistPreview(n.preview) : n.preview);
 
   const c = h(
     "article",
@@ -450,6 +463,14 @@ function buildEditor(note, isNew) {
     onclick: (e) => openPalette(e.currentTarget),
   });
 
+  const clBtn = h("button", {
+    class: "btn icon-btn" + (note.checklist ? " on" : ""),
+    title: "Чек-лист",
+    "aria-label": "Чек-лист",
+    html: I.check2,
+    onclick: (e) => toggleChecklist(e.currentTarget),
+  });
+
   const top = h(
     "div",
     { class: "editor-top" },
@@ -463,6 +484,7 @@ function buildEditor(note, isNew) {
     saveState,
     h("div", { class: "spacer" }),
     eyeBtn,
+    clBtn,
     pinBtn,
     palBtn,
     h("button", {
@@ -533,7 +555,11 @@ function renderEditorBody() {
     const blame = h("div", { class: "blame-view" });
     renderBlame(blame, note.tokens || []);
     ed.bodyWrap.replaceChildren(banner, legend, blame, timeline(note.history || []));
+  } else if (note.checklist) {
+    ed.body = null;
+    renderChecklist();
   } else {
+    ed.getContent = null;
     const body = h("textarea", {
       class: "body-input",
       placeholder: "Пиши здесь…",
@@ -544,6 +570,97 @@ function renderEditorBody() {
     ed.body = body;
     ed.bodyWrap.replaceChildren(body);
     autoGrow(body);
+  }
+}
+
+// Чек-лист: галочки вместо сплошного текста
+function renderChecklist(focusIndex) {
+  const ed = state.editor;
+  if (!ed) return;
+  if (!ed.clItems) ed.clItems = parseChecklist(ed.note.content || "");
+  const items = ed.clItems;
+  ed.getContent = () => stringifyChecklist(items);
+
+  const list = h("div", { class: "cl" });
+  items.forEach((it, i) => {
+    const input = h("input", {
+      class: "cl-text" + (it.done ? " done" : ""),
+      value: it.text,
+      placeholder: "Пункт",
+      oninput: (e) => {
+        it.text = e.target.value;
+        onEdit();
+      },
+      onkeydown: (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          items.splice(i + 1, 0, { done: false, text: "" });
+          onEdit();
+          renderChecklist(i + 1);
+        } else if (e.key === "Backspace" && !it.text && items.length > 1) {
+          e.preventDefault();
+          items.splice(i, 1);
+          onEdit();
+          renderChecklist(Math.max(0, i - 1));
+        }
+      },
+    });
+    list.appendChild(
+      h(
+        "div",
+        { class: "cl-row" },
+        h("button", {
+          class: "cl-box" + (it.done ? " on" : ""),
+          "aria-label": it.done ? "Снять галочку" : "Отметить",
+          html: it.done ? I.check : "",
+          onclick: () => {
+            it.done = !it.done;
+            onEdit();
+            renderChecklist();
+          },
+        }),
+        input,
+        h("button", {
+          class: "cl-del",
+          "aria-label": "Убрать пункт",
+          html: I.close,
+          onclick: () => {
+            items.splice(i, 1);
+            if (!items.length) items.push({ done: false, text: "" });
+            onEdit();
+            renderChecklist();
+          },
+        })
+      )
+    );
+  });
+
+  const done = items.filter((x) => x.done).length;
+  list.appendChild(
+    h(
+      "button",
+      {
+        class: "cl-add",
+        onclick: () => {
+          items.push({ done: false, text: "" });
+          onEdit();
+          renderChecklist(items.length - 1);
+        },
+      },
+      icon("plus", "ic"),
+      "Добавить пункт"
+    )
+  );
+  if (items.length) {
+    list.appendChild(
+      h("div", { class: "cl-count" }, done + " из " + items.length + " готово")
+    );
+  }
+
+  ed.bodyWrap.replaceChildren(list);
+  if (focusIndex !== undefined) {
+    const inputs = list.querySelectorAll(".cl-text");
+    if (inputs[focusIndex]) inputs[focusIndex].focus();
   }
 }
 
@@ -668,7 +785,11 @@ async function saveNote() {
   const ed = state.editor;
   if (!ed || ed.saving) return;
   const title = ed.titleInput.value;
-  const content = ed.body ? ed.body.value : ed.note.content || "";
+  const content = ed.getContent
+    ? ed.getContent()
+    : ed.body
+    ? ed.body.value
+    : ed.note.content || "";
   ed.saving = true;
   try {
     const { note } = await api("/api/notes/" + ed.note.id, "PUT", {
@@ -681,6 +802,7 @@ async function saveNote() {
     ed.conflictShown = false;
     setSaveState("saved", "Сохранено");
     updateListItem(note);
+    refreshStreak();
   } catch (err) {
     if (err.status === 409) {
       // конфликт: на сервере уже новее
@@ -727,6 +849,7 @@ function updateListItem(note) {
     empty: !(note.content || "").trim() && !(note.title || "").trim(),
     color: note.color,
     pinned: note.pinned,
+    checklist: !!note.checklist,
     created_by: note.created_by,
     created_at: note.created_at,
     updated_by: note.updated_by,
@@ -737,6 +860,34 @@ function updateListItem(note) {
 }
 
 // ---------- закрепить / цвет / удалить ----------
+// Переключение обычной заметки в чек-лист и обратно
+async function toggleChecklist(btn) {
+  const ed = state.editor;
+  if (!ed) return;
+  const next = !ed.note.checklist;
+
+  // текущий текст берём из того, что сейчас на экране
+  const cur = ed.getContent ? ed.getContent() : ed.body ? ed.body.value : ed.note.content || "";
+  ed.note.content = next ? toChecklist(cur) : fromChecklist(cur);
+  ed.note.checklist = next;
+  ed.clItems = null;
+  ed.getContent = null;
+
+  btn.classList.toggle("on", next);
+  if (state.reveal) {
+    state.reveal = false;
+    document.body.classList.remove("reveal");
+  }
+  renderEditorBody();
+  onEdit();
+  try {
+    await api("/api/notes/" + ed.note.id, "PATCH", { checklist: next });
+    updateListItem(ed.note);
+  } catch (err) {
+    if (err.status !== 401) toast("Не получилось", "err");
+  }
+}
+
 async function togglePin(btn) {
   const ed = state.editor;
   if (!ed) return;
@@ -868,7 +1019,9 @@ async function destroyEditor() {
   if (ed && ed.note) {
     const emptyNow =
       !(ed.titleInput ? ed.titleInput.value.trim() : ed.note.title) &&
-      !((ed.body ? ed.body.value : ed.note.content) || "").trim();
+      !((ed.getContent ? ed.getContent() : ed.body ? ed.body.value : ed.note.content) || "")
+        .replace(/-s[[ xX]]/g, "")
+        .trim();
     if (emptyNow && !ed.everTyped) {
       try {
         await api("/api/notes/" + ed.note.id, "DELETE");
@@ -1006,6 +1159,8 @@ async function boot() {
     state.me = me;
     enterApp();
     startGamesBadge();
+    refreshStreak();
+    syncBell();
   } catch {
     renderLogin();
   }

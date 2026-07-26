@@ -18,9 +18,12 @@ import {
   createGame,
   applyMove,
   viewGame,
+  turnOf,
   summary,
   buildStats,
 } from "../../lib/games/index.mjs";
+import { touch, getStreak } from "../../lib/activity.mjs";
+import * as push from "../../lib/push.mjs";
 
 export const config = { path: "/api/*" };
 
@@ -52,6 +55,8 @@ async function currentUser(request) {
   return await verifyToken(token, secret());
 }
 
+const otherUser = (id) => (id === "angelina" ? "kirill" : "angelina");
+
 function noteListItem(note) {
   const text = textFromTokens(note.tokens || []);
   return {
@@ -61,6 +66,7 @@ function noteListItem(note) {
     empty: text.trim() === "" && (note.title || "").trim() === "",
     color: note.color,
     pinned: !!note.pinned,
+    checklist: !!note.checklist,
     created_by: note.created_by,
     created_at: note.created_at,
     updated_by: note.updated_by,
@@ -76,6 +82,7 @@ function noteFull(note, revs) {
     tokens: note.tokens || [],
     color: note.color,
     pinned: !!note.pinned,
+    checklist: !!note.checklist,
     created_by: note.created_by,
     created_at: note.created_at,
     updated_by: note.updated_by,
@@ -196,6 +203,19 @@ async function updateNote(request, userId, id) {
       titleTo: titleChanged ? newTitle : "",
     };
     revs = await store.appendRevision(id, rev);
+    await touch();
+    // уведомляем второго, но не заваливаем: только если правка заметная
+    if (ins.length > 1 || titleChanged) {
+      const label = newTitle.trim() || preview(newContent, 40) || "Без названия";
+      push
+        .send(otherUser(userId), {
+          title: USERS[userId].name + " пишет заметку",
+          body: label,
+          tag: "note-" + id,
+          url: "/",
+        })
+        .catch(() => {});
+    }
   }
   return json({ note: noteFull(note, revs) });
 }
@@ -206,6 +226,7 @@ async function patchNote(request, userId, id) {
   if (!note) return json({ error: "Заметка не найдена" }, { status: 404 });
   if (body.pinned !== undefined) note.pinned = !!body.pinned;
   if (body.color !== undefined) note.color = String(body.color);
+  if (body.checklist !== undefined) note.checklist = !!body.checklist;
   await store.putNote(note);
   return json({ ok: true });
 }
@@ -287,6 +308,29 @@ async function moveHandler(request, id, userId) {
   }
   game.updated_at = Date.now();
   await store.putGame(game);
+  await touch();
+
+  const entry = catalogEntry(game.type);
+  const gameName = entry ? entry.title : "игра";
+  const foe = otherUser(userId);
+  if (game.status !== "active") {
+    const body =
+      game.winner === "both"
+        ? "Прошли вместе!"
+        : game.winner === userId
+        ? USERS[userId].name + " победил(а)"
+        : "Партия окончена";
+    push.send(foe, { title: gameName, body, tag: "game-" + game.id, url: "/" }).catch(() => {});
+  } else if (turnOf(game) === foe) {
+    push
+      .send(foe, {
+        title: gameName,
+        body: "Твой ход",
+        tag: "game-" + game.id,
+        url: "/",
+      })
+      .catch(() => {});
+  }
   return json({ game: gameResponse(game, userId), result: res });
 }
 
@@ -315,6 +359,29 @@ export default async function handler(request) {
 
     const userId = await currentUser(request);
     if (!userId) return json({ error: "Не авторизован" }, { status: 401 });
+
+    // огонёк и пуши
+    if (path === "/api/streak" && method === "GET") return json(await getStreak());
+    if (path === "/api/push/key" && method === "GET")
+      return json({ key: push.publicKey(), enabled: await push.hasSubscription(userId) });
+    if (path === "/api/push/subscribe" && method === "POST") {
+      const body = await readBody(request);
+      if (!body.subscription || !body.subscription.endpoint)
+        return json({ error: "Нет подписки" }, { status: 400 });
+      await push.subscribe(userId, body.subscription);
+      await push.send(userId, {
+        title: "Уведомления включены",
+        body: "Теперь сообщу, когда твой ход или новая заметка",
+        tag: "hello",
+        url: "/",
+      });
+      return json({ ok: true });
+    }
+    if (path === "/api/push/unsubscribe" && method === "POST") {
+      const body = await readBody(request);
+      await push.unsubscribe(userId, String(body.endpoint || ""));
+      return json({ ok: true });
+    }
 
     if (path === "/api/me" && method === "GET")
       return json({ user: userId, name: USERS[userId].name, users: publicUsers() });

@@ -1,5 +1,5 @@
 // Заметки - service worker (офлайн-оболочка)
-const CACHE = "mn-v3";
+const CACHE = "mn-v4";
 const CORE = [
   "/",
   "/index.html",
@@ -7,6 +7,7 @@ const CORE = [
   "/app.js",
   "/core.js",
   "/games.js",
+  "/extras.js",
   "/manifest.webmanifest",
   "/icons/icon.svg",
 ];
@@ -62,6 +63,39 @@ async function networkFirst(req) {
     return new Response("Офлайн", { status: 503, statusText: "Offline" });
   }
 }
+
+// ---------- пуш-уведомления ----------
+self.addEventListener("push", (e) => {
+  let data = {};
+  try {
+    data = e.data ? e.data.json() : {};
+  } catch {
+    data = { title: "Заметки", body: e.data ? e.data.text() : "" };
+  }
+  e.waitUntil(
+    self.registration.showNotification(data.title || "Заметки", {
+      body: data.body || "",
+      tag: data.tag || "mn",
+      renotify: true,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: { url: data.url || "/" },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "/";
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if (c.url.includes(self.location.origin)) return c.focus();
+      }
+      return self.clients.openWindow(url);
+    })
+  );
+});
 
 async function cacheFirst(req) {
   const cache = await caches.open(CACHE);

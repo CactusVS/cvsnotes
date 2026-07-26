@@ -13,13 +13,26 @@ let bsPicks = [];
 let bsShip = null; // размер корабля, который сейчас ставим
 let bsHoriz = true; // ориентация при постановке
 let chSel = null; // выбранная шашка
+let csSel = null; // выбранная шахматная фигура
+let wStatTab = "all"; // вкладка статистики Wordle
+let lastStats = null; // последний ответ статистики, чтобы перерисовывать без запроса
 
 const TYPE_ICON = {
   battleship: "anchor",
   checkers: "disc",
+  chess: "crown",
   codenames: "grid",
+  hangman: "noose",
   wordle: "letters",
 };
+
+// Unicode-фигуры: рисуются шрифтом, никаких картинок не нужно
+const CHESS_GLYPH = {
+  K: "♔", Q: "♕", R: "♖", B: "♗", N: "♘", P: "♙",
+  k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟",
+};
+
+const ALPHABET = "АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ".split("");
 
 // ============================================================
 //  ОТКРЫТИЕ / ЗАКРЫТИЕ
@@ -248,7 +261,7 @@ function activeRow(g) {
 function resultLabel(g) {
   if (g.coop) {
     if (g.winner === "both") return "прошли вместе";
-    return "не получилось";
+    return "поражение";
   }
   if (!g.winner) return "ничья";
   return "победа: " + nameOf(g.winner);
@@ -290,27 +303,54 @@ function newGameCard(c) {
       class: "link-btn",
       onclick: () => showRules(c),
     }, "как играть")),
-    variants
-      ? h(
-          "div",
-          { class: "variant-row" },
-          ...variants.map((v) =>
-            h(
-              "button",
-              {
-                class: "btn btn-primary btn-sm",
-                onclick: (e) => create(c.type, v.id, e.currentTarget),
+    h(
+      "button",
+      {
+        class: "btn btn-primary btn-sm",
+        onclick: (e) =>
+          variants ? chooseVariant(c) : create(c.type, null, e.currentTarget),
+      },
+      "Начать"
+    )
+  );
+}
+
+// Выбор режима отдельным окном, чтобы кнопка на карточке была одна и та же везде
+function chooseVariant(c) {
+  const scrim = h(
+    "div",
+    { class: "modal-scrim", onclick: (e) => e.target === scrim && scrim.remove() },
+    h(
+      "div",
+      { class: "modal glass rules-modal" },
+      h("h3", {}, c.title),
+      h("div", { class: "rules-sub" }, "Выбери режим"),
+      h(
+        "div",
+        { class: "variant-list" },
+        ...c.variants.map((v) =>
+          h(
+            "button",
+            {
+              class: "variant-opt",
+              onclick: async () => {
+                scrim.remove();
+                await create(c.type, v.id);
               },
-              v.title
-            )
+            },
+            h("span", { class: "variant-opt-title" }, v.title),
+            v.hint ? h("span", { class: "variant-opt-hint" }, v.hint) : null
           )
         )
-      : h(
-          "button",
-          { class: "btn btn-primary btn-sm", onclick: (e) => create(c.type, null, e.currentTarget) },
-          "Начать"
-        )
+      ),
+      h(
+        "div",
+        { class: "modal-actions" },
+        h("button", { class: "btn", onclick: () => scrim.remove() }, "Отмена")
+      )
+    )
   );
+  document.body.appendChild(scrim);
 }
 
 function showRules(c) {
@@ -357,6 +397,7 @@ async function openGame(id) {
     bsMode = "shot";
     bsPicks = [];
     chSel = null;
+    csSel = null;
     renderGame();
   } catch (e) {
     if (e.status === 404) {
@@ -443,6 +484,8 @@ function renderGame() {
   else if (g.type === "codenames") scroll.appendChild(codenamesBoard(g));
   else if (g.type === "battleship") scroll.appendChild(battleshipBoard(g));
   else if (g.type === "checkers") scroll.appendChild(checkersBoard(g));
+  else if (g.type === "chess") scroll.appendChild(chessBoard(g));
+  else if (g.type === "hangman") scroll.appendChild(hangmanBoard(g));
 
   box.replaceChildren(
     head(g.title, {
@@ -484,15 +527,20 @@ function statusBar(g) {
       } else {
         text =
           v.lostReason === "assassin"
-            ? "Попались убийце. Найдено " + v.found + " из " + v.total
+            ? "Наткнулись на смерть. Найдено " + v.found + " из " + v.total
             : "Ходы кончились. Найдено " + v.found + " из " + v.total;
         tone = "lose";
       }
+    } else if (!g.winner) {
+      const why =
+        v.result === "stalemate" ? "Пат" : v.result === "fifty" ? "Ничья по 50 ходам" : "Ничья";
+      text = why;
+      tone = "wait";
     } else if (g.winner === state.me.user) {
-      text = "Ты победил!";
+      text = v.result === "checkmate" ? "Мат! Ты победил" : "Ты победил!";
       tone = "win";
     } else {
-      text = (WON[g.winner] || "Победил") + "!";
+      text = (WON[g.winner] || "Победил") + (v.result === "checkmate" ? " матом" : "") + "!";
       tone = "lose";
     }
   } else if (g.type === "battleship" && v.phase === "placing") {
@@ -612,6 +660,7 @@ function codenamesBoard(g) {
       "div",
       { class: "cn-bar" },
       h("span", { class: "cn-stat" }, "Найдено ", h("b", {}, v.found + " / " + v.total)),
+      h("span", { class: "cn-stat" }, v.levelLabel || ""),
       h("span", { class: "cn-stat" }, "Ходов ", h("b", {}, String(v.turnsLeft)))
     )
   );
@@ -689,7 +738,7 @@ function codenamesBoard(g) {
           { class: "hint" },
           "Зелёным обведены слова для твоих подсказок - их будет угадывать ",
           nameOf(v.giver === "angelina" ? "kirill" : "angelina"),
-          ". Красное - убийца, про него не намекай."
+          ". Красное - смерть."
         )
       );
     } else {
@@ -772,17 +821,17 @@ function battleshipBoard(g) {
       bsShip = [4, 3, 2, 1].find((sz) => (rem[sz] || 0) > 0) || null;
     }
 
-    box.appendChild(
-      bsGrid({
-        cls: "own",
-        cells: (i) => ({
-          cls: (myCells.has(i) ? "ship " : "") + (v.myMine === i ? "mine " : ""),
-          mark: v.myMine === i ? "*" : "",
-          tapable: !ready,
-        }),
-        onTap: (i) => onPlaceTap(i, v),
-      })
-    );
+    const grid = bsGrid({
+      cls: "own" + (ready ? "" : " placing"),
+      cells: (i) => ({
+        cls: (myCells.has(i) ? "ship " : "") + (v.myMine === i ? "mine " : ""),
+        mark: v.myMine === i ? "*" : "",
+        tapable: !ready,
+      }),
+      onTap: (i) => onPlaceTap(i, v),
+    });
+    box.appendChild(grid);
+    if (!ready) attachPlacePreview(grid, v);
 
     if (ready) {
       box.appendChild(h("p", { class: "hint center" }, "Ждём, пока соперник расставит корабли…"));
@@ -1017,6 +1066,66 @@ function logLine(e) {
   return `${who}: ${cell} - мимо`;
 }
 
+// Клетки, которые займёт корабль, если поставить его от anchor. null - вылезает за поле
+function previewCells(anchor, size, horiz) {
+  const x = anchor % 10,
+    y = Math.floor(anchor / 10);
+  const cells = [];
+  for (let k = 0; k < size; k++) {
+    const cx = horiz ? x + k : x;
+    const cy = horiz ? y : y + k;
+    if (cx > 9 || cy > 9) return null;
+    cells.push(cy * 10 + cx);
+  }
+  return cells;
+}
+
+// Та же проверка касания, что и на сервере, но чтобы подсветить заранее
+function placeValid(cells, v) {
+  const occ = new Set(v.myShips.flatMap((s) => s.cells));
+  for (const c of cells) {
+    const x = c % 10,
+      y = Math.floor(c / 10);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx,
+          ny = y + dy;
+        if (nx < 0 || nx > 9 || ny < 0 || ny > 9) continue;
+        if (occ.has(ny * 10 + nx)) return false;
+      }
+    }
+  }
+  return true;
+}
+
+// Подсветка будущего корабля: ведёшь пальцем по полю и видишь, куда он ляжет
+function attachPlacePreview(wrap, v) {
+  const cells = [...wrap.querySelectorAll(".bs-cell")];
+  const clear = () => cells.forEach((c) => c.classList.remove("preview", "preview-bad"));
+  const show = (i) => {
+    clear();
+    if (v.complete || !bsShip) return;
+    const cs = previewCells(i, bsShip, bsHoriz);
+    if (!cs) {
+      cells[i].classList.add("preview-bad");
+      return;
+    }
+    const good = placeValid(cs, v);
+    cs.forEach((c) => cells[c].classList.add(good ? "preview" : "preview-bad"));
+  };
+  const at = (e) => {
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const i = cells.indexOf(el);
+    if (i >= 0) show(i);
+    else clear();
+  };
+  wrap.addEventListener("pointermove", at);
+  wrap.addEventListener("pointerdown", at);
+  wrap.addEventListener("pointerleave", clear);
+  wrap.addEventListener("pointercancel", clear);
+  wrap.addEventListener("pointerup", clear);
+}
+
 async function onPlaceTap(i, v) {
   // по своему кораблю - убрать его
   if (v.myShips.some((s) => s.cells.includes(i))) {
@@ -1149,6 +1258,210 @@ async function onCheckersTap(i, v, moves) {
 }
 
 // ============================================================
+//  ШАХМАТЫ
+// ============================================================
+function chessBoard(g) {
+  const v = g.view;
+  const box = h("div", { class: "cs" });
+  const myTurn = g.yourTurn && g.status === "active";
+  const moves = v.moves || [];
+  const flip = v.myColor === "b"; // свои фигуры всегда снизу
+
+  const targets = new Set(moves.filter((m) => m.from === csSel).map((m) => m.to));
+  const movable = new Set(moves.map((m) => m.from));
+  const checkSq = v.check ? v.board.indexOf(v.colors[v.turn] === "w" ? "K" : "k") : -1;
+
+  const order = [];
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) order.push(r * 8 + c);
+  if (flip) order.reverse();
+
+  const board = h("div", { class: "cs-board" });
+  for (const i of order) {
+    const x = i % 8,
+      y = Math.floor(i / 8);
+    const p = v.board[i];
+    let cls = "cs-sq " + ((x + y) % 2 === 1 ? "dark" : "light");
+    if (csSel === i) cls += " sel";
+    if (targets.has(i)) cls += " target";
+    if (v.lastMove && (v.lastMove.from === i || v.lastMove.to === i)) cls += " last";
+    if (i === checkSq) cls += " check";
+    if (myTurn && csSel === null && movable.has(i)) cls += " movable";
+
+    const kids = [];
+    if (p !== ".") {
+      kids.push(
+        h("span", { class: "cs-piece " + (p === p.toUpperCase() ? "w" : "b") }, CHESS_GLYPH[p] || "")
+      );
+    }
+    if (targets.has(i)) kids.push(h("span", { class: p !== "." ? "cs-cap" : "cs-dot" }));
+
+    board.appendChild(
+      h(
+        "button",
+        {
+          class: cls,
+          disabled: !myTurn,
+          onclick: myTurn ? () => onChessTap(i, v, moves) : null,
+        },
+        ...kids
+      )
+    );
+  }
+  box.appendChild(board);
+
+  if (g.status === "active") {
+    box.appendChild(
+      h(
+        "p",
+        { class: "hint center" },
+        v.check ? "Шах!" : myTurn ? "Выбери фигуру, потом клетку." : "Ждём ход соперника."
+      )
+    );
+    box.appendChild(
+      h("p", { class: "hint center" }, "Ты играешь " + (v.myColor === "w" ? "белыми" : "чёрными"))
+    );
+  }
+  return box;
+}
+
+async function onChessTap(i, v, moves) {
+  const p = v.board[i];
+  const mine = p !== "." && (p === p.toUpperCase() ? "w" : "b") === v.myColor;
+  if (mine) {
+    csSel = csSel === i ? null : i;
+    renderGame();
+    return;
+  }
+  if (csSel === null) return;
+  const mv = moves.find((m) => m.from === csSel && m.to === i);
+  if (!mv) {
+    csSel = null;
+    renderGame();
+    return;
+  }
+  const from = csSel;
+  csSel = null;
+  await doMove({ kind: "move", from, to: i, promo: mv.promo || undefined });
+}
+
+// ============================================================
+//  ВИСЕЛИЦА
+// ============================================================
+function gallows(wrong) {
+  const part = (n, el) => (wrong >= n ? el : "");
+  const svg = `<svg viewBox="0 0 120 140" fill="none" stroke="currentColor" stroke-width="4"
+      stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10 132h60M26 132V12h50M76 12v18" opacity="0.55"/>
+    ${part(1, '<circle cx="76" cy="42" r="12"/>')}
+    ${part(2, '<path d="M76 54v34"/>')}
+    ${part(3, '<path d="M76 62 60 78"/>')}
+    ${part(4, '<path d="M76 62l16 16"/>')}
+    ${part(5, '<path d="M76 88 62 112"/>')}
+    ${part(6, '<path d="M76 88l14 24"/>')}
+  </svg>`;
+  return h("div", { class: "hm-gallows" + (wrong >= 6 ? " dead" : ""), html: svg });
+}
+
+function hangmanBoard(g) {
+  const v = g.view;
+  const me = state.me.user;
+  const box = h("div", { class: "hm" });
+
+  box.appendChild(gallows(v.wrong));
+
+  if (v.phase === "setting") {
+    if (me === v.setter) {
+      const inp = h("input", {
+        class: "field",
+        placeholder: "Слово или фраза",
+        maxlength: "40",
+        autocomplete: "off",
+      });
+      const hintIn = h("input", {
+        class: "field",
+        placeholder: "Подсказка, если хочешь",
+        maxlength: "60",
+        autocomplete: "off",
+      });
+      const send = async () => {
+        const okDone = await doMove({ kind: "setWord", word: inp.value, hint: hintIn.value });
+        if (okDone) toast("Загадано", "ok");
+      };
+      box.appendChild(h("div", { class: "hm-set" }, inp, hintIn));
+      box.appendChild(
+        h(
+          "div",
+          { class: "bs-actions" },
+          h("button", { class: "btn btn-primary", onclick: send }, "Загадать")
+        )
+      );
+      box.appendChild(
+        h("p", { class: "hint" }, "Можно с пробелами и дефисом. Буква ё считается за е.")
+      );
+    } else {
+      box.appendChild(h("p", { class: "hint center" }, nameOf(v.setter) + " загадывает…"));
+    }
+    return box;
+  }
+
+  box.appendChild(
+    h(
+      "div",
+      { class: "hm-word" },
+      ...v.masked.split("").map((ch) =>
+        ch === " "
+          ? h("span", { class: "hm-ch space" })
+          : h("span", { class: "hm-ch" + (ch === "_" ? " blank" : "") }, ch === "_" ? "" : ch)
+      )
+    )
+  );
+  if (v.hint) box.appendChild(h("p", { class: "hint center" }, "Подсказка: " + v.hint));
+
+  if (v.status !== "active") {
+    box.appendChild(h("p", { class: "hint center big" }, "Слово было: ", h("b", {}, v.word || "")));
+    return box;
+  }
+
+  if (me === v.guesser) {
+    const kb = h("div", { class: "hm-kb" });
+    for (const ch of ALPHABET) {
+      const used = v.guessed.includes(ch);
+      const miss = v.misses.includes(ch);
+      kb.appendChild(
+        h(
+          "button",
+          {
+            class: "hm-key" + (used ? (miss ? " miss" : " hit") : ""),
+            disabled: used,
+            onclick: () => doMove({ kind: "letter", letter: ch }),
+          },
+          ch
+        )
+      );
+    }
+    box.appendChild(kb);
+
+    const inp = h("input", { class: "field", placeholder: "Или назови целиком", autocomplete: "off" });
+    const send = async () => {
+      const val = inp.value;
+      if (!val) return;
+      inp.value = "";
+      await doMove({ kind: "word", word: val });
+    };
+    inp.addEventListener("keydown", (e) => e.key === "Enter" && send());
+    box.appendChild(
+      h("div", { class: "w-input" }, inp, h("button", { class: "btn btn-primary", onclick: send }, "Ответ"))
+    );
+    box.appendChild(
+      h("p", { class: "hint" }, "Осталось промахов: " + (v.maxWrong - v.wrong))
+    );
+  } else {
+    box.appendChild(h("p", { class: "hint center" }, nameOf(v.guesser) + " отгадывает…"));
+  }
+  return box;
+}
+
+// ============================================================
 //  СТАТИСТИКА
 // ============================================================
 async function openStats() {
@@ -1161,6 +1474,7 @@ async function openStats() {
     );
   try {
     const data = await api("/api/games/stats");
+    lastStats = data;
     renderStats(data);
   } catch (e) {
     if (e.status !== 401) toast("Не удалось загрузить статистику", "err");
@@ -1231,8 +1545,8 @@ function renderStats(data) {
 function statRow(row) {
   const bits = [];
   if (row.coop) {
-    bits.push(h("span", { class: "st-chip win" }, "прошли: " + row.coopWon));
-    bits.push(h("span", { class: "st-chip" }, "не вышло: " + row.coopLost));
+    bits.push(h("span", { class: "st-chip win" }, "побед: " + row.coopWon));
+    bits.push(h("span", { class: "st-chip" }, "поражений: " + row.coopLost));
     if (row.bestFound) bits.push(h("span", { class: "st-chip" }, "рекорд: " + row.bestFound + " агентов"));
   } else {
     bits.push(
@@ -1253,44 +1567,91 @@ function statRow(row) {
       h("span", { class: "st-game-count" }, row.played + " " + plural(row.played, ["партия", "партии", "партий"]))
     ),
     h("div", { class: "st-chips" }, ...bits),
-    row.extra && row.extra.kind === "wordle" ? wordleStats(row.extra) : null
+    row.extra && row.extra.kind === "wordle" ? wordleStats(row.extra) : null,
+    row.extra && row.extra.kind === "codenames" ? codenamesStats(row.extra) : null
   );
 }
 
-// Подробности по Wordle: за сколько попыток отгадывали
+// Подробности по Wordle с переключателем: партнёр / я / общая
 function wordleStats(e) {
+  const me = state.me.user;
+  const foe = me === "angelina" ? "kirill" : "angelina";
   const box = h("div", { class: "st-wordle" });
+
+  const tabBtn = (id, label) =>
+    h(
+      "button",
+      {
+        class: "st-tab" + (wStatTab === id ? " on" : ""),
+        onclick: () => {
+          wStatTab = id;
+          if (lastStats) renderStats(lastStats);
+        },
+      },
+      label
+    );
+  box.appendChild(
+    h("div", { class: "st-tabs" }, tabBtn(foe, nameOf(foe)), tabBtn(me, "Моя"), tabBtn("all", "Общая"))
+  );
+
+  const set = e[wStatTab] || e.all;
   box.appendChild(
     h(
       "div",
       { class: "st-wordle-nums" },
-      h("div", { class: "st-num" }, h("b", {}, String(e.solved)), h("span", {}, "отгадано")),
-      h("div", { class: "st-num" }, h("b", {}, String(e.failed)), h("span", {}, "не далось")),
-      e.best ? h("div", { class: "st-num" }, h("b", {}, String(e.best)), h("span", {}, "лучший результат")) : null,
-      e.avg ? h("div", { class: "st-num" }, h("b", {}, String(e.avg)), h("span", {}, "в среднем попыток")) : null
+      h("div", { class: "st-num" }, h("b", {}, String(set.solved)), h("span", {}, "отгадано")),
+      h("div", { class: "st-num" }, h("b", {}, String(set.failed)), h("span", {}, "проиграно")),
+      set.best ? h("div", { class: "st-num" }, h("b", {}, String(set.best)), h("span", {}, "лучший результат")) : null,
+      set.avg ? h("div", { class: "st-num" }, h("b", {}, String(set.avg)), h("span", {}, "в среднем попыток")) : null
     )
   );
-  const max = Math.max(...e.dist, 1);
-  const chart = h("div", { class: "st-dist" });
-  e.dist.forEach((n, i) => {
-    chart.appendChild(
+
+  if (set.solved) {
+    const max = Math.max(...set.dist, 1);
+    const chart = h("div", { class: "st-dist" });
+    set.dist.forEach((n, i) => {
+      chart.appendChild(
+        h(
+          "div",
+          { class: "st-dist-row" },
+          h("span", { class: "st-dist-lbl" }, String(i + 1)),
+          h(
+            "span",
+            { class: "st-dist-bar" },
+            h("span", {
+              class: "st-dist-fill" + (n ? "" : " zero"),
+              style: `width:${n ? Math.max((n / max) * 100, 8) : 0}%`,
+            })
+          ),
+          h("span", { class: "st-dist-n" }, String(n))
+        )
+      );
+    });
+    box.appendChild(h("div", { class: "st-dist-cap" }, "За сколько попыток отгадывали"));
+    box.appendChild(chart);
+  } else {
+    box.appendChild(h("p", { class: "hint" }, "Пока нет отгаданных слов."));
+  }
+  return box;
+}
+
+// Кодовые имена: разбивка по сложностям
+function codenamesStats(e) {
+  const labels = { easy: "Полегче", normal: "Обычная", hard: "Сложная" };
+  const box = h("div", { class: "st-levels" });
+  for (const k of ["easy", "normal", "hard"]) {
+    const l = e.levels[k];
+    if (!l || (!l.won && !l.lost)) continue;
+    box.appendChild(
       h(
         "div",
-        { class: "st-dist-row" },
-        h("span", { class: "st-dist-lbl" }, String(i + 1)),
-        h(
-          "span",
-          { class: "st-dist-bar" },
-          h("span", {
-            class: "st-dist-fill" + (n ? "" : " zero"),
-            style: `width:${n ? Math.max((n / max) * 100, 8) : 0}%`,
-          })
-        ),
-        h("span", { class: "st-dist-n" }, String(n))
+        { class: "st-level" },
+        h("span", { class: "st-level-name" }, labels[k]),
+        h("span", { class: "st-chip win" }, "побед: " + l.won),
+        h("span", { class: "st-chip" }, "поражений: " + l.lost),
+        l.best ? h("span", { class: "st-chip" }, "рекорд: " + l.best) : null
       )
     );
-  });
-  box.appendChild(h("div", { class: "st-dist-cap" }, "За сколько попыток отгадывали"));
-  box.appendChild(chart);
+  }
   return box;
 }
