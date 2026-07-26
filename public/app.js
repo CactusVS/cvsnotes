@@ -171,10 +171,11 @@ function enterApp() {
       h("span", { class: "dot", html: I.leaf }),
       h(
         "span",
-        {},
+        { class: "brand-text" },
         "Заметки",
         h("span", { class: "who-mini" }, "  ·  " + nameOf(state.me.user))
-      )
+      ),
+      h("span", { class: "who-dot mini-dot " + state.me.user, title: nameOf(state.me.user) })
     ),
     streakChip(),
     bellButton(),

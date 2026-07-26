@@ -551,6 +551,12 @@ textarea {
   width: 17px;
   height: 17px;
 }
+.topbar-brand .brand-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .topbar-brand .who-mini {
   color: var(--text-3);
   font-family: var(--font-mono);
@@ -558,9 +564,41 @@ textarea {
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+/* компактная точка вместо имени - показывается только когда имени не хватает места */
+.topbar-brand .who-dot.mini-dot {
+  display: none;
+  margin-left: 0.15rem;
+}
+
+/* узкие телефоны: имени "· Кирилл" рядом с кнопками уже не хватает места -
+   прячем текст, оставляем только цветную точку, и слегка ужимаем сами кнопки */
+@media (max-width: 460px) {
+  .topbar {
+    gap: 0.4rem;
+  }
+  .topbar-brand .who-mini {
+    display: none;
+  }
+  .topbar-brand .who-dot.mini-dot {
+    display: inline-block;
+  }
+  .topbar .icon-btn {
+    width: 38px;
+    height: 38px;
+  }
+  .topbar .icon-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+  .streak-chip {
+    padding: 0.25rem 0.5rem 0.25rem 0.4rem;
+    gap: 0.2rem;
+  }
+  .streak-ic svg {
+    width: 16px;
+    height: 16px;
+  }
 }
 
 .wrap {
