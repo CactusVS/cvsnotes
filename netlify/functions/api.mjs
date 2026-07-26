@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   USERS,
+  verb,
   publicUsers,
   checkPassword,
   passwordOf,
@@ -212,7 +213,7 @@ async function updateNote(request, userId, id) {
           body: label,
           tag: "note-" + id,
           url: "/",
-        })
+        }, "notes")
         .catch(() => {});
     }
   }
@@ -316,9 +317,9 @@ async function moveHandler(request, id, userId) {
       game.winner === "both"
         ? "Прошли вместе!"
         : game.winner === userId
-        ? USERS[userId].name + " победил(а)"
+        ? USERS[userId].name + " " + verb(userId, "победил", "победила")
         : "Партия окончена";
-    push.send(foe, { title: gameName, body, tag: "game-" + game.id, url: "/" }).catch(() => {});
+    push.send(foe, { title: gameName, body, tag: "game-" + game.id, url: "/" }, "result").catch(() => {});
   } else if (turnOf(game) === foe) {
     push
       .send(foe, {
@@ -326,7 +327,7 @@ async function moveHandler(request, id, userId) {
         body: "Твой ход",
         tag: "game-" + game.id,
         url: "/",
-      })
+      }, "turn")
       .catch(() => {});
   }
   return json({ game: gameResponse(game, userId), result: res });
@@ -367,10 +368,10 @@ export default async function handler(request) {
         push
           .send(otherUser(userId), {
             title: "Огонёк ждёт",
-            body: USERS[userId].name + " зажёг(ла) огонёк. Твоя очередь",
+            body: USERS[userId].name + " " + verb(userId, "зажёг", "зажгла") + " огонёк. Твоя очередь",
             tag: "flame",
             url: "/",
-          })
+          }, "flame")
           .catch(() => {});
       }
       return json(await getStreak());
@@ -381,6 +382,8 @@ export default async function handler(request) {
         enabled: await push.hasSubscription(userId),
         // чтобы было видно, какой именно переменной не хватает на сервере
         missing: push.missingKeys(),
+        kinds: push.PREF_KINDS,
+        prefs: await push.getPrefs(userId),
       });
     if (path === "/api/push/subscribe" && method === "POST") {
       const body = await readBody(request);
@@ -394,6 +397,10 @@ export default async function handler(request) {
         url: "/",
       });
       return json({ ok: true });
+    }
+    if (path === "/api/push/prefs" && method === "POST") {
+      const body = await readBody(request);
+      return json({ prefs: await push.setPrefs(userId, body.prefs || {}) });
     }
     if (path === "/api/push/unsubscribe" && method === "POST") {
       const body = await readBody(request);

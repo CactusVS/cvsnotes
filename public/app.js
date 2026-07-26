@@ -826,7 +826,7 @@ function handleConflict(remoteNote) {
   if (!ed || ed.conflictShown) return;
   ed.conflictShown = true;
   const who = remoteNote ? nameOf(remoteNote.updated_by) : "Кто-то";
-  toast(who + " тоже изменил(а) эту заметку", "info", {
+  toast(who + " тоже " + VERB.edit[remoteNote ? remoteNote.updated_by : "kirill"] + " эту заметку", "info", {
     label: "Обновить",
     fn: () => {
       if (remoteNote) {

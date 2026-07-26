@@ -256,42 +256,82 @@ async function openBell(anchor) {
     old.remove();
     return;
   }
-  const st = await pushState();
+  let st = await pushState();
+  let info = { kinds: [], prefs: {} };
+  try {
+    info = await api("/api/push/key");
+  } catch {}
+
   const pop = h("div", { class: "popover bell-pop" });
 
-  const row = (label, sub, on, onToggle) =>
+  const row = (label, sub, on, onToggle, small) =>
     h(
       "button",
       {
-        class: "bell-row" + (on ? " on" : ""),
+        class: "bell-row" + (small ? " sub" : ""),
         onclick: async (e) => {
-          e.currentTarget.disabled = true;
+          const btn = e.currentTarget;
+          btn.disabled = true;
           await onToggle();
-          pop.remove();
-          syncBell();
+          btn.disabled = false;
+          build();
         },
       },
       h("span", { class: "bell-txt" }, h("b", {}, label), h("span", {}, sub)),
       h("span", { class: "bell-sw" + (on ? " on" : "") })
     );
 
-  pop.appendChild(
-    st.supported
-      ? row(
-          "Уведомления",
-          st.on ? "приходят на телефон" : "сообщать о ходе и заметках",
-          st.on,
-          () => (st.on ? disablePush() : enablePush())
-        )
-      : h("div", { class: "bell-note" }, "Браузер не умеет уведомления")
-  );
-  pop.appendChild(
-    row("Звук и вибрация", soundOn() ? "включены" : "выключены", soundOn(), async () => {
-      setSound(!soundOn());
-      if (soundOn()) buzz();
-    })
-  );
+  async function build() {
+    st = await pushState();
+    pop.replaceChildren();
 
+    pop.appendChild(
+      st.supported
+        ? row("Уведомления", st.on ? "приходят на телефон" : "выключены", st.on, async () => {
+            if (st.on) await disablePush();
+            else await enablePush();
+            try {
+              info = await api("/api/push/key");
+            } catch {}
+          })
+        : h("div", { class: "bell-note" }, "Браузер не умеет уведомления")
+    );
+
+    // что именно присылать - только когда уведомления включены
+    if (st.on && info.kinds && info.kinds.length) {
+      pop.appendChild(h("div", { class: "bell-sep" }, "Присылать"));
+      for (const k of info.kinds) {
+        const on = info.prefs[k.id] !== false;
+        pop.appendChild(
+          row(
+            k.title,
+            k.sub,
+            on,
+            async () => {
+              try {
+                const res = await api("/api/push/prefs", "POST", { prefs: { [k.id]: !on } });
+                info.prefs = res.prefs;
+              } catch {
+                toast("Не получилось сохранить", "err");
+              }
+            },
+            true
+          )
+        );
+      }
+      pop.appendChild(h("div", { class: "bell-sep" }, ""));
+    }
+
+    pop.appendChild(
+      row("Звук и вибрация", soundOn() ? "включены" : "выключены", soundOn(), async () => {
+        setSound(!soundOn());
+        if (soundOn()) buzz();
+      })
+    );
+    syncBell();
+  }
+
+  await build();
   document.body.appendChild(pop);
   const r = anchor.getBoundingClientRect();
   pop.style.top = r.bottom + 8 + "px";
