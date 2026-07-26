@@ -1643,23 +1643,8 @@ body.reveal .attr-only {
 }
 
 /* включённые уведомления помечаем тихой точкой, а не заливкой */
-#bellBtn {
-  position: relative;
-}
-#bellBtn.on {
-  border-color: var(--border-bright);
-  color: var(--text-2);
-}
-#bellBtn.on::after {
-  content: "";
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: rgba(52, 211, 153, 0.75);
-}
+/* колокольчик выглядит одинаково всегда, включены уведомления или нет -
+   состояние видно в самом меню, доп. подсветка на кнопке только мешает */
 
 /* ============================================================
    ЧЕК-ЛИСТЫ

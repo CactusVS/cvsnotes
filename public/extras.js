@@ -349,7 +349,6 @@ export async function syncBell() {
   const btn = document.getElementById("bellBtn");
   if (!btn) return;
   const st = await pushState();
-  btn.classList.toggle("on", !!st.on);
   btn.title = st.on ? "Уведомления включены" : "Уведомления";
 }
 
