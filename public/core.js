@@ -113,6 +113,32 @@ export function h(tag, attrs = {}, ...kids) {
 export const icon = (name, cls) =>
   h("span", { class: cls || "ic-wrap", html: I[name], "aria-hidden": "true" });
 
+// Перерисовка не должна сбрасывать прокрутку. Опрос сервера идёт каждые несколько
+// секунд, и без этого страницу кидало наверх прямо во время чтения.
+// key нужен, чтобы при переходе на другой экран прокрутка начиналась сверху.
+let lastSwapKey = null;
+
+export function swapKeepScroll(box, key, ...kids) {
+  const prev = box.querySelector(".editor-scroll");
+  const y = prev && key === lastSwapKey ? prev.scrollTop : 0;
+  lastSwapKey = key;
+  box.replaceChildren(...kids);
+  if (!y) return;
+  const next = box.querySelector(".editor-scroll");
+  if (next) next.scrollTop = y;
+}
+
+// То же самое, но для прокрутки всей страницы: подменяем содержимое,
+// не давая браузеру схлопнуть высоту и увести скролл в ноль.
+export function replaceKeepPageScroll(area, ...kids) {
+  const y = window.scrollY;
+  // придерживаем высоту, иначе на миг пусто и браузер сам уводит скролл в ноль
+  area.style.minHeight = area.offsetHeight + "px";
+  area.replaceChildren(...kids);
+  area.style.minHeight = "";
+  if (y && window.scrollY !== y) window.scrollTo(0, y);
+}
+
 // ---------- запросы ----------
 // Обработчик разлогина регистрирует app.js, чтобы не было кольцевого импорта
 let onUnauthorized = () => {};

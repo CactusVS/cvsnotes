@@ -12,6 +12,7 @@ import {
   ago,
   fullTime,
   toast,
+  replaceKeepPageScroll,
 } from "./core.js";
 import { openGames, startGamesBadge } from "./games.js";
 import {
@@ -300,7 +301,7 @@ function renderGrid() {
     if (rest.length) frag.appendChild(h("div", { class: "section-label" }, "Остальные"));
   }
   if (rest.length) frag.appendChild(gridOf(rest));
-  area.replaceChildren(frag);
+  replaceKeepPageScroll(area, frag);
 }
 
 function gridOf(notes) {
@@ -534,6 +535,14 @@ function metaLine(note) {
   );
 }
 
+// Подмена тела заметки не должна дёргать прокрутку - опрос идёт каждые 5 секунд
+function setBody(ed, ...kids) {
+  const scroll = ed.bodyWrap.closest(".editor-scroll");
+  const y = scroll ? scroll.scrollTop : 0;
+  ed.bodyWrap.replaceChildren(...kids);
+  if (scroll && y) scroll.scrollTop = y;
+}
+
 function renderEditorBody() {
   const ed = state.editor;
   if (!ed) return;
@@ -555,7 +564,7 @@ function renderEditorBody() {
     );
     const blame = h("div", { class: "blame-view" });
     renderBlame(blame, note.tokens || []);
-    ed.bodyWrap.replaceChildren(banner, legend, blame, timeline(note.history || []));
+    setBody(ed, banner, legend, blame, timeline(note.history || []));
   } else if (note.checklist) {
     ed.body = null;
     renderChecklist();
@@ -569,7 +578,7 @@ function renderEditorBody() {
     });
     body.value = note.content || "";
     ed.body = body;
-    ed.bodyWrap.replaceChildren(body);
+    setBody(ed, body);
     autoGrow(body);
   }
 }
@@ -658,7 +667,7 @@ function renderChecklist(focusIndex) {
     );
   }
 
-  ed.bodyWrap.replaceChildren(list);
+  setBody(ed, list);
   if (focusIndex !== undefined) {
     const inputs = list.querySelectorAll(".cl-text");
     if (inputs[focusIndex]) inputs[focusIndex].focus();

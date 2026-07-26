@@ -116,7 +116,7 @@ export async function openFlame() {
         "p",
         {},
         s.burning
-          ? "Сегодня оба на месте. Завтра не забудьте."
+          ? "Огонёк горит! Молодцы"
           : "Огонёк загорается, когда оба зажгли его за день."
       ),
       h("div", { class: "flame-people" }, personRow("angelina", !!s.today.angelina), personRow("kirill", !!s.today.kirill)),

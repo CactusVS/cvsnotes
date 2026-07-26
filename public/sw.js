@@ -1,5 +1,5 @@
 // Заметки - service worker (офлайн-оболочка)
-const CACHE = "mn-v6";
+const CACHE = "mn-v7";
 const CORE = [
   "/",
   "/index.html",

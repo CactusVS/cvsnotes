@@ -2768,6 +2768,11 @@ body.reveal .attr-only {
   opacity: 0.5;
   text-decoration: line-through;
 }
+/* загадавший видит ту же доску букв, но только смотрит */
+.hm-key:disabled:not(.hit):not(.miss) {
+  cursor: default;
+  opacity: 0.45;
+}
 
 /* ---------- СТАТИСТИКА ---------- */
 /* общие плитки: без счёта "кто кого" */

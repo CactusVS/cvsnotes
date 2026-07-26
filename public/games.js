@@ -1,5 +1,18 @@
 // Игры: панель со списком, экраны игр и статистика.
-import { I, state, h, icon, api, nameOf, nameGen, WON, plural, ago, toast } from "./core.js";
+import {
+  I,
+  state,
+  h,
+  icon,
+  api,
+  nameOf,
+  nameGen,
+  WON,
+  plural,
+  ago,
+  toast,
+  swapKeepScroll,
+} from "./core.js";
 import { buzz } from "./extras.js";
 import {
   dominoBoard,
@@ -25,6 +38,7 @@ let chSel = null; // выбранная шашка
 let csSel = null; // выбранная шахматная фигура
 let wStatTab = "all"; // вкладка статистики Wordle
 let lastStats = null; // последний ответ статистики, чтобы перерисовывать без запроса
+let listSig = null; // слепок списка игр: перерисовываем только на реальные изменения
 
 const TYPE_ICON = {
   battleship: "anchor",
@@ -108,8 +122,7 @@ function startPoll() {
           renderGame();
         }
       } else if (mode === "list") {
-        const data = await api("/api/games");
-        state.games = data;
+        // renderList сам сходит на сервер и промолчит, если ничего не поменялось
         renderList(false);
       }
     } catch {}
@@ -204,6 +217,14 @@ async function renderList(showLoading) {
 
   const games = data.games || [];
   const catalog = data.catalog || [];
+
+  // при опросе перерисовываем только если что-то реально изменилось,
+  // иначе список каждые 4 секунды подпрыгивал в начало
+  const sig = JSON.stringify(
+    games.map((g) => [g.id, g.status, g.winner, g.turn, g.phase, ago(g.updated_at)])
+  );
+  if (!showLoading && sig === listSig && inner() && inner().querySelector(".editor-scroll")) return;
+  listSig = sig;
   const active = games.filter((g) => g.status === "active");
   const done = games.filter((g) => g.status !== "active");
 
@@ -240,7 +261,9 @@ async function renderList(showLoading) {
 
   const box2 = inner();
   if (box2)
-    box2.replaceChildren(
+    swapKeepScroll(
+      box2,
+      "list",
       head("Игры", {
         actions: [
           h("button", {
@@ -514,7 +537,9 @@ function renderGame() {
   else if (g.type === "uno") scroll.appendChild(unoBoard(g, doMove));
   else if (g.type === "crossword") scroll.appendChild(crosswordBoard(g, doMove));
 
-  box.replaceChildren(
+  swapKeepScroll(
+    box,
+    "game:" + g.id,
     head(g.title, {
       onBack: () => {
         mode = "list";
@@ -1499,30 +1524,42 @@ function hangmanBoard(g) {
   );
   if (v.hint) box.appendChild(h("p", { class: "hint center" }, "Подсказка: " + v.hint));
 
+  // доску букв видят оба: загадавшему тоже интересно, что уже назвали
+  const canTap = v.status === "active" && me === v.guesser;
+  const kb = h("div", { class: "hm-kb" });
+  for (const ch of ALPHABET) {
+    const used = v.guessed.includes(ch);
+    const miss = v.misses.includes(ch);
+    kb.appendChild(
+      h(
+        "button",
+        {
+          class: "hm-key" + (used ? (miss ? " miss" : " hit") : ""),
+          disabled: used || !canTap,
+          onclick: canTap ? () => doMove({ kind: "letter", letter: ch }) : null,
+        },
+        ch
+      )
+    );
+  }
+  box.appendChild(kb);
+  box.appendChild(
+    h(
+      "p",
+      { class: "hint center" },
+      "Открыто букв: " +
+        (v.guessed.length - v.misses.length) +
+        " · осталось промахов: " +
+        (v.maxWrong - v.wrong)
+    )
+  );
+
   if (v.status !== "active") {
     box.appendChild(h("p", { class: "hint center big" }, "Слово было: ", h("b", {}, v.word || "")));
     return box;
   }
 
   if (me === v.guesser) {
-    const kb = h("div", { class: "hm-kb" });
-    for (const ch of ALPHABET) {
-      const used = v.guessed.includes(ch);
-      const miss = v.misses.includes(ch);
-      kb.appendChild(
-        h(
-          "button",
-          {
-            class: "hm-key" + (used ? (miss ? " miss" : " hit") : ""),
-            disabled: used,
-            onclick: () => doMove({ kind: "letter", letter: ch }),
-          },
-          ch
-        )
-      );
-    }
-    box.appendChild(kb);
-
     const inp = h("input", { class: "field", placeholder: "Или назови целиком", autocomplete: "off" });
     const send = async () => {
       const val = inp.value;
@@ -1533,9 +1570,6 @@ function hangmanBoard(g) {
     inp.addEventListener("keydown", (e) => e.key === "Enter" && send());
     box.appendChild(
       h("div", { class: "w-input" }, inp, h("button", { class: "btn btn-primary", onclick: send }, "Ответ"))
-    );
-    box.appendChild(
-      h("p", { class: "hint" }, "Осталось промахов: " + (v.maxWrong - v.wrong))
     );
   } else {
     box.appendChild(h("p", { class: "hint center" }, nameOf(v.guesser) + " отгадывает…"));
@@ -1621,7 +1655,7 @@ function renderStats(data) {
     );
   }
 
-  box.replaceChildren(head("Статистика", { onBack: backToList }), scroll);
+  swapKeepScroll(box, "stats", head("Статистика", { onBack: backToList }), scroll);
 }
 
 function statRow(row) {
